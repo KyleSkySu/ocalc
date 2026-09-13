@@ -1,0 +1,2 @@
+# ocalc
+Compound interest
