@@ -238,11 +238,11 @@
       <div class="preset-container">
         <div class="preset-title">簡易大盤與策略長期回測（點選一鍵套用年化報酬）：</div>
         <div class="preset-chips">
-          <button class="chip" onclick="applyRate(8.5, '全球全市場股票 (VT / MSCI World)')">全球全市場 (8.5%)</button>
-          <button class="chip" onclick="applyRate(10.5, '標普 500 指數 (S&P 500)')">美股標普 500 (10.5%)</button>
-          <button class="chip" onclick="applyRate(11.2, '台灣加權指數 (台股含息)')">台股大盤含息 (11.2%)</button>
-          <button class="chip" onclick="applyRate(16.8, '納斯達克 100 指數 (QQQ)')">科技巨擘 QQQ (16.8%)</button>
-          <button class="chip" onclick="applyRate(25.0, '主動高成長集中科技組合')">主動成長組合 (25.0%)</button>
+          <button class="chip" onclick="applyRate(8.5)">全球全市場 (8.5%)</button>
+          <button class="chip" onclick="applyRate(10.5)">美股標普 500 (10.5%)</button>
+          <button class="chip" onclick="applyRate(11.2)">台股大盤含息 (11.2%)</button>
+          <button class="chip" onclick="applyRate(16.8)">科技巨擘 QQQ (16.8%)</button>
+          <button class="chip" onclick="applyRate(25.0)">主動成長組合 (25.0%)</button>
         </div>
       </div>
 
@@ -335,7 +335,6 @@
     </div>
 
     <div class="grid">
-      <!-- 倒推目標模式選擇 -->
       <div class="control-group" style="grid-column: span 2;">
         <label><span>選擇倒推計算目標</span></label>
         <select id="goalMode" onchange="calculateGoal()" style="width: 100%;">
@@ -396,14 +395,15 @@
 </div>
 
 <script>
-  // 切換 Tab
   function switchTab(tabId, btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(tabId).classList.add('active');
     if (tabId === 'forwardTab' && chartInstance) {
-      chartInstance.resize();
+      setTimeout(() => {
+        chartInstance.resize();
+      }, 50);
     }
     if (tabId === 'backwardTab') {
       calculateGoal();
@@ -432,7 +432,7 @@
 
   let chartInstance = null;
 
-  function applyRate(val, name) {
+  function applyRate(val) {
     rateInput.value = val;
     rateSlider.value = val;
     calculateTrajectory();
@@ -484,6 +484,7 @@
     for (let y = 1; y <= years; y++) {
       labels.push(`第 ${y} 年`);
       for (let m = 1; m <= 12; m++) {
+        // 月初投入普通年金模型
         currentBalance = (currentBalance + monthlyContribution) * (1 + monthlyRate);
         accumulatedPrincipal += monthlyContribution;
       }
@@ -601,11 +602,6 @@
       rateContainer.style.display = "none";
 
       const pmt = (parseFloat(document.getElementById('goalPmtInput').value) || 0) * parseFloat(document.getElementById('goalPmtMagnitude').value);
-      
-      // 使用二分搜尋法 (Binary Search) 求解月利率 r
-      let low = -0.05, high = 2.0; // 年化範圍 -60% ~ 2400%
-      let iter = 0;
-      let foundR = 0;
 
       function calcFutureVal(annualR) {
         const mRate = annualR / 12;
@@ -615,6 +611,10 @@
         }
         return bal;
       }
+
+      let low = -0.05, high = 5.0; // 擴展二分法搜尋上限至 500%
+      let iter = 0;
+      let foundR = 0;
 
       while (iter < 80) {
         let mid = (low + high) / 2;
@@ -641,12 +641,11 @@
       else if (foundR <= 0.09) marketHint = "可透過全球大盤型 ETF (如 VT) 達成。";
       else if (foundR <= 0.12) marketHint = "接近標普 500 或台股大盤指數的長期年化水準。";
       else if (foundR <= 0.18) marketHint = "需要科技龍頭指數 (如 QQQ) 等高成長資產方可實現。";
-      else marketHint = "要求報酬極高，建議增加每月定期定額金額或延長投資年數以降低風險。";
+      else marketHint = "要求報酬極高，建議增加每月定期定額金額或延長投資年數以降低波動風險。";
 
       resSub.textContent = `現有 ${(pv/10000).toLocaleString()} 萬，每月固定投入 ${(pmt/10000).toLocaleString()} 萬。標的提示：${marketHint}`;
 
     } else {
-      // 模式二：反推每月需存多少
       dynamicLabel.textContent = "預期年化報酬率 (%)";
       pmtContainer.style.display = "none";
       rateContainer.style.display = "block";
@@ -654,11 +653,9 @@
       const expRate = (parseFloat(document.getElementById('goalExpectedRate').value) || 0) / 100;
       const mRate = expRate / 12;
 
-      // 扣除初始本金在該報酬率下的自然複利終值
       const pvFuture = pv * Math.pow(1 + mRate, totalMonths);
       const remainingTarget = targetFv - pvFuture;
 
-      let reqPmt = 0;
       if (remainingTarget <= 0) {
         resTitle.textContent = "單靠初始本金自然複利即可達標！";
         resPrimary.textContent = "$0 / 月";
@@ -666,10 +663,10 @@
         return;
       }
 
+      let reqPmt = 0;
       if (mRate === 0) {
         reqPmt = remainingTarget / totalMonths;
       } else {
-        // 月初投入普通年金終值公式: FV = PMT * (1+r) * [ ( (1+r)^n - 1 ) / r ]
         const factor = (1 + mRate) * (Math.pow(1 + mRate, totalMonths) - 1) / mRate;
         reqPmt = remainingTarget / factor;
       }
